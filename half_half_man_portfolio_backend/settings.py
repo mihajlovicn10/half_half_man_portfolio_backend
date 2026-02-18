@@ -10,22 +10,35 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "t", "yes", "y", "on"}
+
+
+def _env_csv(name: str, default: list[str]) -> list[str]:
+    value = os.environ.get(name)
+    if not value:
+        return default
+    return [item.strip() for item in value.split(",") if item.strip()]
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-(1f1n6+lxi#)_987ni6wf2oy0hj$ia(emu&m(x@p1(6=k0*15s'
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-insecure-change-me")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = _env_bool("DJANGO_DEBUG", True)
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = _env_csv("DJANGO_ALLOWED_HOSTS", [])
 
 
 # Application definition
@@ -78,16 +91,26 @@ WSGI_APPLICATION = 'half_half_man_portfolio_backend.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'half_half_man_portfolio_backend',
-        'USER': 'postgres',
-        'PASSWORD': 'Odostsimiski12!',
-        'HOST': 'localhost',
-        'PORT': '5432',
+_db_engine = os.environ.get("DJANGO_DB_ENGINE")
+if _db_engine:
+    DATABASES = {
+        "default": {
+            "ENGINE": _db_engine,
+            "NAME": os.environ.get("DJANGO_DB_NAME", ""),
+            "USER": os.environ.get("DJANGO_DB_USER", ""),
+            "PASSWORD": os.environ.get("DJANGO_DB_PASSWORD", ""),
+            "HOST": os.environ.get("DJANGO_DB_HOST", ""),
+            "PORT": os.environ.get("DJANGO_DB_PORT", ""),
+        }
     }
-}
+else:
+    # Safe default for dev/tests; use local_settings.py or env to configure Postgres.
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
+    }
 
 
 # Password validation
@@ -162,7 +185,16 @@ SIMPLE_JWT = {
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
 
-# CORS (adjust origins in production)
-CORS_ALLOW_ALL_ORIGINS = DEBUG
-if not DEBUG:
-    CORS_ALLOWED_ORIGINS = []  # set in local_settings e.g. ["https://yoursite.com"]
+try:
+    from .local_settings import *  # type: ignore
+except ImportError:
+    pass
+
+if not DEBUG and SECRET_KEY == "dev-insecure-change-me":
+    raise RuntimeError("Set DJANGO_SECRET_KEY (or local_settings.SECRET_KEY) when DJANGO_DEBUG is false.")
+
+# CORS (adjust origins in production; can be overridden in local_settings.py)
+if "CORS_ALLOW_ALL_ORIGINS" not in globals():
+    CORS_ALLOW_ALL_ORIGINS = DEBUG
+if not DEBUG and "CORS_ALLOWED_ORIGINS" not in globals():
+    CORS_ALLOWED_ORIGINS = []  # e.g. ["https://yoursite.com"]
