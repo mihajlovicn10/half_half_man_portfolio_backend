@@ -1,6 +1,10 @@
 """Domain and application exceptions. No framework dependencies."""
 
 
+class InsufficientRole(Exception):
+    """Caller's role is not allowed to perform this action (application-layer RBAC)."""
+
+
 class UserAlreadyExists(Exception):
     """A user with this email already exists."""
 

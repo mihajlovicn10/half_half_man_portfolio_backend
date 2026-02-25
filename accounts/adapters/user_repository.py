@@ -3,6 +3,7 @@
 from django.contrib.auth import get_user_model
 
 from domain.accounts.entities import User
+from domain.accounts.roles import Role
 
 UserModel = get_user_model()
 
@@ -15,6 +16,7 @@ def _to_entity(m: UserModel) -> User:
         last_name=m.last_name or "",
         is_active=m.is_active,
         date_joined=m.date_joined,
+        role=Role(m.role) if hasattr(m, "role") and m.role else Role.USER,
     )
 
 

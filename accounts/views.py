@@ -1,16 +1,18 @@
 """Thin HTTP layer: parse request → call use case → map response."""
 
 from rest_framework import generics, status
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 
 from domain.accounts.exceptions import (
+    InsufficientRole,
     InvalidCredentials,
     InvalidResetToken,
     UserAlreadyExists,
     UserDisabled,
 )
+from .permissions import AllowOnlyGuest, IsRoleAtLeastUser
 
 from .composition_root import (
     change_password,
@@ -43,6 +45,7 @@ def _user_to_response(user):
         "last_name": getattr(user, "last_name", "") or "",
         "is_active": getattr(user, "is_active", True),
         "date_joined": date_joined,
+        "role": getattr(user, "role", "user") or "user",
     }
 
 
@@ -52,7 +55,7 @@ class AuthRateThrottle(AnonRateThrottle):
 
 class RegisterView(generics.GenericAPIView):
     serializer_class = RegisterSerializer
-    permission_classes = (AllowAny,)
+    permission_classes = (AllowOnlyGuest,)  # Guest only; User/Buyer/Client ✗ (§4.1)
     throttle_classes = (AuthRateThrottle,)
 
     def post(self, request):
@@ -104,7 +107,7 @@ class LoginView(generics.GenericAPIView):
 
 class MeView(generics.RetrieveUpdateAPIView):
     serializer_class = UserSerializer
-    permission_classes = (IsAuthenticated,)
+    permission_classes = (IsRoleAtLeastUser,)
 
     def get_object(self):
         return self.request.user
@@ -116,11 +119,14 @@ class MeView(generics.RetrieveUpdateAPIView):
         serializer = self.get_serializer(instance=request.user, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         from application.accounts.use_cases.update_profile import UpdateProfileInput
-        updated = update_profile.execute(UpdateProfileInput(
-            user_id=request.user.id,
-            first_name=serializer.validated_data.get("first_name"),
-            last_name=serializer.validated_data.get("last_name"),
-        ))
+        try:
+            updated = update_profile.execute(UpdateProfileInput(
+                user_id=request.user.id,
+                first_name=serializer.validated_data.get("first_name"),
+                last_name=serializer.validated_data.get("last_name"),
+            ))
+        except InsufficientRole:
+            return Response({"detail": "You do not have permission to perform this action."}, status=status.HTTP_403_FORBIDDEN)
         if updated is None:
             return Response(_user_to_response(request.user))
         return Response(_user_to_response(updated))
@@ -128,7 +134,7 @@ class MeView(generics.RetrieveUpdateAPIView):
 
 class PasswordChangeView(generics.GenericAPIView):
     serializer_class = PasswordChangeSerializer
-    permission_classes = (IsAuthenticated,)
+    permission_classes = (IsRoleAtLeastUser,)
 
     def post(self, request):
         serializer = self.get_serializer(data=request.data)
@@ -137,6 +143,8 @@ class PasswordChangeView(generics.GenericAPIView):
         try:
             from application.accounts.use_cases.change_password import ChangePasswordInput
             change_password.execute(ChangePasswordInput(user_id=request.user.id, old_password=data["old_password"], new_password=data["new_password"]))
+        except InsufficientRole:
+            return Response({"detail": "You do not have permission to perform this action."}, status=status.HTTP_403_FORBIDDEN)
         except InvalidCredentials:
             return Response({"old_password": ["Current password is incorrect."]}, status=status.HTTP_400_BAD_REQUEST)
         return Response({"detail": "Password changed successfully."})

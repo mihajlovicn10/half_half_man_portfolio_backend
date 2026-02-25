@@ -3,7 +3,9 @@
 from dataclasses import dataclass
 
 from domain.accounts.entities import User
+from domain.accounts.roles import Role
 
+from ..authorization import require_role_at_least
 from ..ports import UserRepository
 
 
@@ -19,6 +21,10 @@ class UpdateProfile:
         self._user_repo = user_repo
 
     def execute(self, input: UpdateProfileInput) -> User | None:
+        user = self._user_repo.get_by_id(input.user_id)
+        if user is None:
+            return None
+        require_role_at_least(user.role, Role.USER)
         return self._user_repo.update_profile(
             input.user_id,
             first_name=input.first_name,

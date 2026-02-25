@@ -13,7 +13,7 @@ User = get_user_model()
 
 def _disable_auth_throttle():
     """Disable throttling on auth views so tests can hit them repeatedly."""
-    for attr in ("RegisterView", "CustomTokenObtainPairView", "PasswordResetRequestView", "PasswordResetConfirmView"):
+    for attr in ("RegisterView", "LoginView", "PasswordResetRequestView", "PasswordResetConfirmView"):
         view_class = getattr(views, attr, None)
         if view_class is not None:
             view_class.throttle_classes = ()

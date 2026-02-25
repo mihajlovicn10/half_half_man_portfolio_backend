@@ -55,6 +55,7 @@ Details and examples: [docs/AUTH.md](docs/AUTH.md).
    py manage.py migrate
    py manage.py createsuperuser   # optional, for /admin/
    ```
+   If you see `InconsistentMigrationHistory` (admin applied before accounts), see [docs/MIGRATION_FIX.md](docs/MIGRATION_FIX.md). If `accounts_user` does not exist, run `py manage.py reset_migration_history` then `py manage.py migrate`.
 
 5. **Run the server**
    ```bash
