@@ -1,5 +1,10 @@
-Django>=5.1
-djangorestframework>=3.14
-djangorestframework-simplejwt>=5.3
-django-cors-headers>=4.3
-psycopg2-binary>=2.9
+# Compatible-release pins (~=) for reproducible builds.
+# After the first successful Railway deploy, run `pip freeze > requirements.txt`
+# inside the build env to lock exact patch versions.
+Django~=5.1.0
+djangorestframework~=3.15
+djangorestframework-simplejwt~=5.3
+django-cors-headers~=4.4
+psycopg2-binary~=2.9
+gunicorn~=23.0
+whitenoise~=6.7

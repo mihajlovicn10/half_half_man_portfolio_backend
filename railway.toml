@@ -1,0 +1,5 @@
+[deploy]
+preDeployCommand = "python manage.py migrate --noinput && python manage.py collectstatic --noinput"
+startCommand = "gunicorn half_half_man_portfolio_backend.wsgi --bind 0.0.0.0:$PORT --workers 3"
+healthcheckPath = "/api/health/"
+healthcheckTimeout = 120

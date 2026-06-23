@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
 import os
+import urllib.parse
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -58,6 +59,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -91,8 +93,38 @@ WSGI_APPLICATION = 'half_half_man_portfolio_backend.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
+def _postgres_options() -> dict:
+    if os.environ.get("DJANGO_DB_SSLMODE"):
+        return {"sslmode": os.environ["DJANGO_DB_SSLMODE"]}
+    return {}
+
+
+def _database_from_url(url: str) -> dict:
+    parsed = urllib.parse.urlparse(url)
+    query = urllib.parse.parse_qs(parsed.query)
+    options = _postgres_options()
+    if "sslmode" in query:
+        options["sslmode"] = query["sslmode"][0]
+    elif not options:
+        # Railway/managed Postgres typically require TLS.
+        options["sslmode"] = "require"
+    return {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": urllib.parse.unquote(parsed.path.lstrip("/")),
+        "USER": urllib.parse.unquote(parsed.username or ""),
+        "PASSWORD": urllib.parse.unquote(parsed.password or ""),
+        "HOST": parsed.hostname or "",
+        "PORT": str(parsed.port or 5432),
+        "CONN_MAX_AGE": int(os.environ.get("DJANGO_DB_CONN_MAX_AGE", "60")),
+        "OPTIONS": options,
+    }
+
+
+_database_url = os.environ.get("DATABASE_URL")
 _db_engine = os.environ.get("DJANGO_DB_ENGINE")
-if _db_engine:
+if _database_url:
+    DATABASES = {"default": _database_from_url(_database_url)}
+elif _db_engine:
     DATABASES = {
         "default": {
             "ENGINE": _db_engine,
@@ -101,6 +133,9 @@ if _db_engine:
             "PASSWORD": os.environ.get("DJANGO_DB_PASSWORD", ""),
             "HOST": os.environ.get("DJANGO_DB_HOST", ""),
             "PORT": os.environ.get("DJANGO_DB_PORT", ""),
+            # Reuse connections (seconds). 0 = new connection per request.
+            "CONN_MAX_AGE": int(os.environ.get("DJANGO_DB_CONN_MAX_AGE", "60")),
+            "OPTIONS": _postgres_options(),
         }
     }
 else:
@@ -148,6 +183,17 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / "staticfiles"
+
+# WhiteNoise: compress + cache-bust static files (admin assets) without a CDN.
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 # Email (for password reset). In production set in local_settings.
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
@@ -197,4 +243,20 @@ if not DEBUG and SECRET_KEY == "dev-insecure-change-me":
 if "CORS_ALLOW_ALL_ORIGINS" not in globals():
     CORS_ALLOW_ALL_ORIGINS = DEBUG
 if not DEBUG and "CORS_ALLOWED_ORIGINS" not in globals():
-    CORS_ALLOWED_ORIGINS = []  # e.g. ["https://yoursite.com"]
+    # Set via env: CORS_ALLOWED_ORIGINS is read from DJANGO_CORS_ALLOWED_ORIGINS
+    CORS_ALLOWED_ORIGINS = _env_csv("DJANGO_CORS_ALLOWED_ORIGINS", [])
+
+# Trusted origins for CSRF (Django admin login over HTTPS on the api subdomain)
+if "CSRF_TRUSTED_ORIGINS" not in globals():
+    CSRF_TRUSTED_ORIGINS = _env_csv("DJANGO_CSRF_TRUSTED_ORIGINS", [])
+
+# Production security hardening — behind a TLS-terminating proxy (Railway + Cloudflare)
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SECURE_SSL_REDIRECT = _env_bool("DJANGO_SECURE_SSL_REDIRECT", True)
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_HSTS_SECONDS = int(os.environ.get("DJANGO_HSTS_SECONDS", "31536000"))
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = _env_bool("DJANGO_HSTS_INCLUDE_SUBDOMAINS", True)
+    SECURE_HSTS_PRELOAD = _env_bool("DJANGO_HSTS_PRELOAD", True)
