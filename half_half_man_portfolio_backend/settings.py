@@ -41,6 +41,15 @@ DEBUG = _env_bool("DJANGO_DEBUG", True)
 
 ALLOWED_HOSTS = _env_csv("DJANGO_ALLOWED_HOSTS", [])
 
+# Railway injects RAILWAY_PUBLIC_DOMAIN / RAILWAY_ENVIRONMENT at runtime.
+_railway_domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN")
+if _railway_domain and _railway_domain not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(_railway_domain)
+if os.environ.get("RAILWAY_ENVIRONMENT"):
+    for _host in (".up.railway.app", ".railway.app"):
+        if _host not in ALLOWED_HOSTS:
+            ALLOWED_HOSTS.append(_host)
+
 
 # Application definition
 
@@ -250,10 +259,12 @@ if not DEBUG and "CORS_ALLOWED_ORIGINS" not in globals():
 if "CSRF_TRUSTED_ORIGINS" not in globals():
     CSRF_TRUSTED_ORIGINS = _env_csv("DJANGO_CSRF_TRUSTED_ORIGINS", [])
 
-# Production security hardening — behind a TLS-terminating proxy (Railway + Cloudflare)
+# Production security hardening — behind a TLS-terminating proxy (Railway + Cloudflare).
+# Default SSL redirect off on Railway: edge proxy terminates TLS and internal healthchecks use HTTP.
 if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-    SECURE_SSL_REDIRECT = _env_bool("DJANGO_SECURE_SSL_REDIRECT", True)
+    _ssl_redirect_default = not bool(os.environ.get("RAILWAY_ENVIRONMENT"))
+    SECURE_SSL_REDIRECT = _env_bool("DJANGO_SECURE_SSL_REDIRECT", _ssl_redirect_default)
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_CONTENT_TYPE_NOSNIFF = True

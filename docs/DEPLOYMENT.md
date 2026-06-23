@@ -35,7 +35,7 @@
 |----------|-------|
 | `DJANGO_SECRET_KEY` | generate: `python -c "import secrets; print(secrets.token_urlsafe(64))"` |
 | `DJANGO_DEBUG` | `false` |
-| `DJANGO_ALLOWED_HOSTS` | `api.half-half-man.com,<your>.up.railway.app` |
+| `DJANGO_ALLOWED_HOSTS` | `api.half-half-man.com` *(optional — Railway `*.up.railway.app` is added automatically)* |
 | `DATABASE_URL` | *(auto when Railway Postgres is linked)* or Neon connection string |
 | `DJANGO_DB_ENGINE` | `django.db.backends.postgresql` *(only if not using DATABASE_URL)* |
 | `DJANGO_DB_NAME` | from DB provider |
@@ -67,3 +67,18 @@
 - Flip `REST_FRAMEWORK.DEFAULT_PERMISSION_CLASSES` to `IsAuthenticated`; confirm every public view (register/login/reset/health, future likes/comments) declares its own permission. Do this once likes/comments endpoints exist.
 - `pip freeze > requirements.txt` inside the build env to lock exact versions.
 - Configure SMTP for password-reset email (currently console backend).
+
+## 8. Troubleshooting healthcheck failures
+
+**Check deploy logs** (not just build logs) for the running container. Common causes:
+
+| Symptom | Fix |
+|---------|-----|
+| `RuntimeError: Set DJANGO_SECRET_KEY` | Add `DJANGO_SECRET_KEY` in Railway Variables |
+| Healthcheck 400 / `DisallowedHost` | Set `DJANGO_ALLOWED_HOSTS` to your custom domain; Railway `*.up.railway.app` hosts are added automatically |
+| Healthcheck never gets 200 (redirect loop) | Leave `DJANGO_SECURE_SSL_REDIRECT` unset on Railway (defaults to `false`); TLS is handled at the edge |
+| Pre-deploy fails on `migrate` | Verify `DATABASE_URL` (Neon direct host, `sslmode=require`) |
+| Pre-deploy fails on `collectstatic` | Check deploy logs for missing static files |
+
+Required Railway variables for a successful first deploy:
+`DJANGO_SECRET_KEY`, `DJANGO_DEBUG=false`, `DATABASE_URL`
